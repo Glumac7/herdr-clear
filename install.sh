@@ -122,6 +122,10 @@ for p in "${PARTS[@]}"; do
   esac
 done
 
+STATE="$HERDR/.herdr-clear-parts"
+{ cat "$STATE" 2>/dev/null || true; printf '%s\n' "${PARTS[@]}"; } | tr ' ' '\n' | grep . | sort -u > "$STATE.tmp"
+mv "$STATE.tmp" "$STATE"
+
 if command -v herdr-app >/dev/null; then
   for m in ${MODS[@]+"${MODS[@]}"}; do
     herdr-app check "$HERDR/mods/$m" >/dev/null 2>&1 || FAILED+=("$m")

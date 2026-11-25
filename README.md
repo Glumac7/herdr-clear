@@ -13,7 +13,17 @@ git clone git@github.com:Glumac7/herdr-clear.git && cd herdr-clear
 
 Existing files and keys are kept and listed; `--force` replaces them. Your `keys.json` is backed up once to `keys.json.before-herdr-clear`. Then switch layouts in Herdr with `cmd-shift-l` → `clear`.
 
-Update: `git pull && ./install.sh --force <parts>`. `--force` overwrites local edits to those parts.
+## Update
+
+```sh
+./update.sh
+```
+
+Pulls and reinstalls the parts you installed. It overwrites your own edits to those parts and any of your keys that differ.
+
+## Publish (maintainer)
+
+`./publish.sh ["commit message"]` copies the live setup from this Mac into the repo, commits and pushes.
 
 ## Parts
 
