@@ -2,13 +2,18 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-HERDR="${HERDR_HOME:-$HOME/.config/herdr-app}"
+HERDR="${HERDR_HOME:-${HERDR_APP_HOME:-$HOME/.config/herdr-app}}"
 BIN="${WT_BIN:-$HOME/.local/bin}"
 MANAGED="mods layouts themes bin worktrunk launchd keys"
 cd "$REPO"
 trap 'rm -f keys/*.tmp' EXIT
 
+before=$(git rev-parse HEAD)
 git pull -q --ff-only
+if ! git diff --quiet "$before" HEAD -- $MANAGED; then
+  echo "Pulled newer setup changes. Run ./update.sh first, then publish again." >&2
+  exit 1
+fi
 
 for d in mods/*/; do
   m=$(basename "$d")
@@ -29,7 +34,7 @@ for f in $fragments; do
   mv "$f.tmp" "$f"
 done
 jq -n --slurpfile live "$live" '[inputs | .global // {} | keys[]] as $owned | $live[0]
-  | {global: (.global | with_entries(select(.key as $k | $owned | index($k) | not))), terminal}' $fragments > keys/keys.json.tmp
+  | {global: (.global | with_entries(select(.key as $k | $owned | index($k) | not))), terminal} | with_entries(select(.value != null))' $fragments > keys/keys.json.tmp
 mv keys/keys.json.tmp keys/keys.json
 unowned=$(jq -rn --slurpfile live "$live" '[inputs | keys[]] as $owned | $live[0] | keys[]
   | select(. != "global" and . != "terminal" and (. as $s | $owned | index($s) | not))' $fragments)

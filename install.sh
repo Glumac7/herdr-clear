@@ -39,14 +39,14 @@ for a in "$@"; do
   esac
 done
 if [ $UPDATE = 1 ]; then
+  [ ${#PARTS[@]} = 0 ] || { echo "--update takes no parts; it uses your install record." >&2; exit 2; }
   [ -s "$STATE" ] || { echo "No install record at $STATE. Run ./install.sh <parts> once so update knows what you use." >&2; exit 1; }
-  PARTS=()
   for p in $(cat "$STATE"); do
     if known "$p"; then PARTS+=("$p"); else echo "Part $p no longer exists; dropped from your install record."; fi
   done
 fi
 if [ ${#PARTS[@]} = 0 ]; then
-  [ $UPDATE = 0 ] || { echo "Nothing left to update."; exit 0; }
+  [ $UPDATE = 0 ] || { : > "$STATE"; echo "Nothing left to update."; exit 0; }
   PARTS=($ALL)
 fi
 case " ${PARTS[*]} " in *" clear "*) case " ${PARTS[*]} " in *" worktrees "*) ;; *) PARTS+=(worktrees) ;; esac ;; esac
@@ -69,7 +69,7 @@ mod() {
 
 keys() { # fragment
   local file="$HERDR/keys.json" merged conflicts
-  [ -s "$file" ] || echo '{}' > "$file"
+  grep -q '[^[:space:]]' "$file" 2>/dev/null || echo '{}' > "$file"
   conflicts=$(jq -r --slurpfile f "$1" '. as $k | $f[0] | to_entries[] | .key as $s | .value | to_entries[]
     | select($k[$s][.key] != null and $k[$s][.key] != .value) | "\($s) \(.key)"' "$file")
   if [ -n "$conflicts" ] && [ $FORCE = 0 ]; then
@@ -110,7 +110,7 @@ install_worktrees() {
   done
   place "$REPO/worktrunk/config.toml" "$HOME/.config/worktrunk/config.toml" || true
   local settings="$HERDR/settings.json"
-  [ -s "$settings" ] || echo '{}' > "$settings"
+  grep -q '[^[:space:]]' "$settings" 2>/dev/null || echo '{}' > "$settings"
   local current next
   current=$(jq -r '.worktrees.directory // empty' "$settings")
   if [ -z "$current" ] || [ $FORCE = 1 ]; then
