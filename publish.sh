@@ -3,7 +3,10 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
 HERDR="${HERDR_HOME:-$HOME/.config/herdr-app}"
+BIN="${WT_BIN:-$HOME/.local/bin}"
+MANAGED="mods layouts themes bin worktrunk launchd keys"
 cd "$REPO"
+trap 'rm -f keys/*.tmp' EXIT
 
 git pull -q --ff-only
 
@@ -13,7 +16,7 @@ for d in mods/*/; do
 done
 cp "$HERDR/layouts/clear.json" layouts/
 cp "$HERDR/themes/clear.json" themes/
-cp "$HOME/.local/bin/wt-ticket" "$HOME/.local/bin/wt-reap" bin/
+cp "$BIN/wt-ticket" "$BIN/wt-reap" bin/
 cp "$HOME/.config/worktrunk/config.toml" worktrunk/
 sed "s#$HOME#__HOME__#g" "$HOME/Library/LaunchAgents/at.dbdev.wt-reap.plist" > launchd/at.dbdev.wt-reap.plist
 
@@ -29,12 +32,14 @@ jq -n --slurpfile live "$live" '[inputs | .global // {} | keys[]] as $owned | $l
   | {global: (.global | with_entries(select(.key as $k | $owned | index($k) | not))), terminal}' $fragments > keys/keys.json.tmp
 mv keys/keys.json.tmp keys/keys.json
 
-if [ -z "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain -- $MANAGED)" ]; then
+  git add -A -- $MANAGED
+  git status --short -- $MANAGED
+  git commit -q -m "${1:-chore: update setup}"
+fi
+if [ -z "$(git rev-list @{u}..HEAD)" ]; then
   echo "Nothing changed."
   exit 0
 fi
-git add -A
-git status --short
-git commit -q -m "${1:-chore: update setup}"
 git push -q
 echo "Published. Others run ./update.sh"

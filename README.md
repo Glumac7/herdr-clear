@@ -19,11 +19,11 @@ Existing files and keys are kept and listed; `--force` replaces them. Your `keys
 ./update.sh
 ```
 
-Pulls and reinstalls the parts you installed. It overwrites your own edits to those parts and any of your keys that differ.
+Pulls and reinstalls the parts you installed (recorded by `install.sh`). It overwrites your own edits to those parts and any of your keys that differ.
 
 ## Publish (maintainer)
 
-`./publish.sh ["commit message"]` copies the live setup from this Mac into the repo, commits and pushes.
+`./publish.sh ["commit message"]` copies the live setup from this Mac into the repo, commits and pushes. A new global key lands in `keys/keys.json`; if it belongs to a part, move it to `keys/<part>.json` once.
 
 ## Parts
 

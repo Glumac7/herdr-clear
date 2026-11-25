@@ -43,11 +43,9 @@ SKIPPED=()
 FAILED=()
 MODS=()
 
-place() { # src dest
+place() { # src dest; returns 1 only when an existing dest is kept
   if [ -e "$2" ] && [ $FORCE = 0 ]; then SKIPPED+=("$2"); return 1; fi
-  rm -rf "$2"
-  mkdir -p "$(dirname "$2")"
-  cp -R "$1" "$2"
+  rm -rf "$2" && mkdir -p "$(dirname "$2")" && cp -R "$1" "$2" || { echo "Failed to install $2" >&2; exit 1; }
 }
 
 mod() {
@@ -78,7 +76,6 @@ install_clear() {
   place "$REPO/themes/clear.json" "$HERDR/themes/clear.json" || true
   mod clear
   mod clear-tabs
-  keys "$REPO/keys/clear.json"
   local dir="$HERDR/mods/clear"
   mkdir -p "$dir/fonts" "$dir/bin"
   if [ -d "$FONTS" ]; then
@@ -95,12 +92,17 @@ install_clear() {
 
 install_worktrees() {
   mkdir -p "$BIN" "$HOME/.local/state/wt-reap"
-  for s in wt-ticket wt-reap; do place "$REPO/bin/$s" "$BIN/$s" && chmod +x "$BIN/$s" || true; done
+  for s in wt-ticket wt-reap; do
+    if place "$REPO/bin/$s" "$BIN/$s"; then chmod +x "$BIN/$s"; fi
+  done
   place "$REPO/worktrunk/config.toml" "$HOME/.config/worktrunk/config.toml" || true
   local settings="$HERDR/settings.json"
   [ -f "$settings" ] || echo '{}' > "$settings"
-  if [ "$(jq -r '.worktrees.directory // empty' "$settings")" = "" ] || [ $FORCE = 1 ]; then
-    printf '%s\n' "$(jq '.worktrees.directory = "~/worktrees"' "$settings")" > "$settings"
+  local current next
+  current=$(jq -r '.worktrees.directory // empty' "$settings")
+  if [ -z "$current" ] || [ $FORCE = 1 ]; then
+    next=$(jq '.worktrees.directory = "~/worktrees"' "$settings")
+    printf '%s\n' "$next" > "$settings"
   fi
   local plist="$HOME/Library/LaunchAgents/at.dbdev.wt-reap.plist"
   if [ ! -e "$plist" ] || [ $FORCE = 1 ]; then
@@ -123,12 +125,12 @@ for p in "${PARTS[@]}"; do
 done
 
 STATE="$HERDR/.herdr-clear-parts"
-{ cat "$STATE" 2>/dev/null || true; printf '%s\n' "${PARTS[@]}"; } | tr ' ' '\n' | grep . | sort -u > "$STATE.tmp"
+{ if [ -f "$STATE" ]; then cat "$STATE"; fi; printf '%s\n' "${PARTS[@]}"; } | sort -u > "$STATE.tmp"
 mv "$STATE.tmp" "$STATE"
 
 if command -v herdr-app >/dev/null; then
   for m in ${MODS[@]+"${MODS[@]}"}; do
-    herdr-app check "$HERDR/mods/$m" >/dev/null 2>&1 || FAILED+=("$m")
+    herdr-app check "$HERDR/mods/$m" >/dev/null || FAILED+=("$m")
   done
 else
   echo "herdr-app not on PATH; mods were not checked."

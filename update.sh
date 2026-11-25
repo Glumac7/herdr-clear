@@ -3,7 +3,8 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
 HERDR="${HERDR_HOME:-$HOME/.config/herdr-app}"
+STATE="$HERDR/.herdr-clear-parts"
 
+[ -s "$STATE" ] || { echo "No install record at $STATE. Run ./install.sh <parts> once so update knows what you use." >&2; exit 1; }
 git -C "$REPO" pull -q --ff-only
-parts=$(cat "$HERDR/.herdr-clear-parts" 2>/dev/null || true)
-exec "$REPO/install.sh" --force $parts
+exec "$REPO/install.sh" --force $(cat "$STATE")
