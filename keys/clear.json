@@ -1,0 +1,56 @@
+{
+  "global": {
+    "cmd-shift-e": "layout.toggle:panel",
+    "cmd-shift-g": {
+      "command": "layout.select",
+      "args": {
+        "stack": "panel-body",
+        "child": "remote-checker"
+      }
+    },
+    "cmd-shift-r": {
+      "command": "layout.select",
+      "args": {
+        "stack": "panel-body",
+        "child": "servers"
+      }
+    },
+    "cmd-shift-k": {
+      "command": "layout.select",
+      "args": {
+        "stack": "panel-body",
+        "child": "skills"
+      }
+    },
+    "cmd-shift-m": {
+      "command": "layout.select",
+      "args": {
+        "stack": "panel-body",
+        "child": "agenttrail"
+      }
+    },
+    "cmd-shift-t": {
+      "command": "layout.select",
+      "args": {
+        "stack": "panel-body",
+        "child": "ticket-desk"
+      }
+    }
+  },
+  "layout:clear": {
+    "cmd-n": "clear.newtab",
+    "cmd-t": "clear.newtab",
+    "cmd-w": "tab.settle",
+    "cmd-b": "clear.sidebar",
+    "cmd-shift-y": "clear.panel",
+    "cmd-ctrl-1": "clear.view-working",
+    "cmd-ctrl-2": "clear.view-done",
+    "cmd-ctrl-3": "clear.view-idle",
+    "cmd-ctrl-left": "clear.view-prev",
+    "cmd-ctrl-right": "clear.view-next",
+    "cmd-ctrl-up": "clear.session-prev",
+    "cmd-ctrl-down": "clear.session-next",
+    "cmd-shift-b": "clear.btw",
+    "cmd-k": "clear.commands"
+  }
+}

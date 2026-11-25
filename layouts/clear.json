@@ -1,0 +1,188 @@
+{
+  "id": "root",
+  "type": "row",
+  "titlebar": "none",
+  "traffic_lights": [20, 20],
+  "theme": "clear",
+  "colors": {
+    "canvas": "#121214",
+    "chrome": "#121214",
+    "background": "#1e1e21",
+    "surface": "#262629",
+    "popover": "#2a2a2e",
+    "raised": "#323236",
+    "hover": "#ffffff0d",
+    "selected": "#ffffff17",
+    "border": "#ffffff10",
+    "input": "#ffffff1f",
+    "foreground": "#f5f5f7",
+    "muted": "#98989d",
+    "dim": "#6e6e73",
+    "accent": "#0a84ff",
+    "accent_foreground": "#ffffff",
+    "solid": "#0a84ff",
+    "solid_foreground": "#ffffff",
+    "ring": "#0a84ff",
+    "working": "#0a84ff",
+    "blocked": "#ff9f0a",
+    "done": "#30d158",
+    "idle": "#48484a",
+    "unknown": "#8e8e93"
+  },
+  "background": "chrome",
+  "font": "SF Mono",
+  "font_size": 13,
+  "ui_font": ".SystemUIFont",
+  "terminal_padding": [10, 12],
+  "divider": { "width": 0, "color": "chrome" },
+  "toast": "clear",
+  "children": [
+    {
+      "id": "sidebar",
+      "type": "column",
+      "size": { "px": 280 },
+      "min": 44,
+      "max": 480,
+      "resizable": false,
+      "children": [
+        {
+          "id": "head",
+          "type": "block",
+          "content": { "mod": "clear", "props": { "role": "head" } },
+          "size": { "px": 52 },
+          "window_drag": true
+        },
+        {
+          "id": "spaces",
+          "type": "block",
+          "content": { "mod": "clear", "props": { "role": "spaces" } },
+          "size": { "weight": 1 }
+        },
+        {
+          "id": "sidebar-footer",
+          "type": "block",
+          "content": { "mod": "workspace-chrome", "props": { "footer": true } },
+          "size": { "px": 69 }
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "type": "column",
+      "background": "canvas",
+      "children": [
+        {
+          "id": "tabs",
+          "type": "block",
+          "content": { "mod": "clear-tabs" },
+          "size": { "px": 52 },
+          "window_drag": true
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "padding": [0, 8],
+          "gap": 8,
+          "children": [
+            {
+              "id": "main-view",
+              "type": "stack",
+              "active": "chat",
+              "children": [
+                { "id": "chat", "type": "block", "content": { "mod": "clear", "props": { "role": "chat" } } },
+                {
+                  "id": "main",
+                  "type": "block",
+                  "content": {
+                    "tab": "active",
+                    "pane": {
+                      "header": { "content": { "mod": "clear" }, "reveal": "always", "height": 32, "position": "top" },
+                      "background": "background",
+                      "border": { "width": 1, "color": "border" },
+                      "focus": { "width": 1, "color": "#0a84ff99" },
+                      "radius": 12,
+                      "gap": 8,
+                      "lone": true
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "size": { "px": 368 },
+              "min": 280,
+              "max": 900,
+              "hidden": true,
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "active": "files",
+                  "children": [
+                    { "id": "ticket-desk", "type": "block", "content": { "mod": "ticket-desk" } },
+                    { "id": "files", "type": "block", "content": { "mod": "files" } },
+                    { "id": "changes", "type": "block", "content": { "mod": "changes" } },
+                    { "id": "remote-checker", "type": "block", "content": { "mod": "remote-checker" } },
+                    { "id": "servers", "type": "block", "content": { "mod": "servers" } },
+                    { "id": "skills", "type": "block", "content": { "mod": "skills" } },
+                    { "id": "agenttrail", "type": "block", "content": { "mod": "agenttrail" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "status-row",
+          "type": "row",
+          "size": { "px": 32 },
+          "resizable": false,
+          "children": [
+            {
+              "id": "status",
+              "type": "block",
+              "content": { "mod": "clear", "props": { "role": "status" } },
+              "size": { "weight": 1 }
+            },
+            {
+              "id": "usage-limits",
+              "type": "block",
+              "content": { "mod": "usage-limits" },
+              "size": { "px": 220 },
+              "min": 130
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "right",
+      "type": "column",
+      "background": "canvas",
+      "size": { "px": 360 },
+      "min": 28,
+      "max": 640,
+      "children": [
+        {
+          "id": "right-tabs",
+          "type": "block",
+          "content": { "mod": "clear", "props": { "role": "righttabs" } },
+          "size": { "px": 52 },
+          "window_drag": true
+        },
+        {
+          "id": "right-body",
+          "type": "stack",
+          "active": "youtrack",
+          "children": [
+            { "id": "youtrack", "type": "block", "content": { "mod": "clear", "props": { "role": "youtrack" } } },
+            { "id": "worktrees", "type": "block", "content": { "mod": "clear", "props": { "role": "worktrees" } } },
+            { "id": "subagents", "type": "block", "content": { "mod": "clear", "props": { "role": "subagents" } } }
+          ]
+        }
+      ]
+    }
+  ]
+}

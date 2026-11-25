@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Find (and with --apply, remove) git worktrees that are done with.
+
+Removes a worktree only when it is clean, no live terminal sits in it, it is older than
+a day, and its work is safe elsewhere:
+  merged   - its PR is merged and local HEAD has nothing beyond the PR's head
+  integrated - worktrunk sees the branch in the default branch
+  stale    - no open PR, last commit older than --stale-days, HEAD on the remote
+Everything else is reported with the reason it stays. The report goes to
+~/.local/state/wt-reap/report.json for the Herdr panel.
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+STATE = Path.home() / ".local/state/wt-reap"
+NOW = dt.datetime.now(dt.timezone.utc)
+
+
+def run(cmd, cwd=None, timeout=120):
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    return r.returncode, r.stdout, r.stderr
+
+
+def parse_time(s):
+    return dt.datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+
+
+def live_cwds():
+    code, out, _ = run(["hc", "ls", "--json"], timeout=20)
+    if code != 0:
+        return None
+    return [t.get("cwd") for t in json.loads(out).get("terminals", []) if t.get("cwd")]
+
+
+def prs_by_branch(repo):
+    code, out, _ = run(["gh", "pr", "list", "--state", "all", "--limit", "400",
+                        "--json", "number,state,headRefName,headRefOid,url,mergedAt"], cwd=repo)
+    if code != 0:
+        return None
+    by = {}
+    for p in json.loads(out):
+        by.setdefault(p["headRefName"], []).append(p)
+    return by
+
+
+def is_ancestor(repo, a, b):
+    return run(["git", "merge-base", "--is-ancestor", a, b], cwd=repo)[0] == 0
+
+
+def on_remote(repo, sha):
+    code, out, _ = run(["git", "branch", "-r", "--contains", sha], cwd=repo)
+    return code == 0 and bool(out.strip())
+
+
+def age_days(item, path):
+    times = [parse_time(item.get("head", {}).get("committed_at"))]
+    try:
+        times.append(dt.datetime.fromtimestamp(os.stat(path).st_mtime, dt.timezone.utc))
+    except OSError:
+        pass
+    newest = max(t for t in times if t)
+    return (NOW - newest).total_seconds() / 86400
+
+
+def judge(repo, item, prs, cwds, stale_days):
+    wt = item["worktree"]
+    path, branch, sha = wt["path"], item.get("branch"), item.get("head", {}).get("sha")
+    if wt.get("prunable"):
+        return "prune", "worktree folder is gone"
+    if cwds is None:
+        return "keep", "cannot see Herdr terminals (hc failed)"
+    if any(c == path or c.startswith(path + "/") for c in cwds):
+        return "keep", "a terminal is open in it"
+    ch = wt.get("changes", {})
+    if any(ch.get(k) for k in ("staged", "modified", "renamed", "deleted", "conflicted")):
+        return "keep", "uncommitted changes"
+    if ch.get("untracked"):
+        return "keep", "untracked files"
+    if wt.get("detached") or not branch:
+        return "keep", "detached HEAD"
+    if age_days(item, path) < 1:
+        return "keep", "younger than a day"
+    mine = (prs or {}).get(branch, [])
+    if any(p["state"] == "OPEN" for p in mine):
+        return "keep", "open PR"
+    if item.get("display", {}).get("state") in ("empty", "integrated"):
+        return "remove", "already in the default branch"
+    merged = [p for p in mine if p["state"] == "MERGED"]
+    for p in merged:
+        if run(["git", "cat-file", "-e", p["headRefOid"]], cwd=repo)[0] != 0:
+            run(["git", "fetch", "--quiet", "origin", f"pull/{p['number']}/head"], cwd=repo, timeout=120)
+        if p["headRefOid"] == sha or is_ancestor(repo, sha, p["headRefOid"]):
+            return "remove", f"PR #{p['number']} merged"
+    if merged:
+        return "keep", f"PR #{merged[0]['number']} merged, but commits after it"
+    committed = parse_time(item.get("head", {}).get("committed_at"))
+    idle = (NOW - committed).days if committed else 0
+    if idle >= stale_days:
+        if sha and on_remote(repo, sha):
+            return "remove", f"stale: no open PR, idle {idle}d, pushed"
+        return "keep", f"stale ({idle}d) but not pushed"
+    if any(p["state"] == "CLOSED" for p in mine):
+        return "keep", "PR closed unmerged"
+    return "keep", "in progress"
+
+
+def repos(root):
+    for d in sorted(Path(root).expanduser().iterdir()):
+        if (d / ".git").is_dir():
+            yield d
+
+
+def remove(repo, item, reason):
+    """Returns None when removed, else why not."""
+    wt = item["worktree"]
+    if reason == "prune":
+        code, _, err = run(["git", "worktree", "prune"], cwd=repo)
+    else:
+        cmd = ["wt", "-C", str(repo), "remove", wt["path"], "--foreground", "--yes"]
+        if reason.startswith("PR #"):
+            cmd.append("--force-delete")
+        if reason.startswith("stale"):
+            cmd.append("--no-delete-branch")
+        code, _, err = run(cmd, timeout=300)
+    if code == 0:
+        return None
+    why = err.strip().splitlines()[-1] if err.strip() else "failed"
+    print(f"  ! {wt['path']}: {why}", file=sys.stderr)
+    return why
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--root", default="~/durchblicker")
+    ap.add_argument("--apply", action="store_true", help="remove what qualifies (default: report only)")
+    ap.add_argument("--stale-days", type=int, default=14)
+    ap.add_argument("--no-fetch", action="store_true")
+    args = ap.parse_args()
+
+    cwds = live_cwds()
+    failures = 0
+    report = {"at": NOW.isoformat(), "applied": args.apply, "stale_days": args.stale_days, "repos": []}
+    for repo in repos(args.root):
+        code, out, _ = run(["git", "worktree", "list", "--porcelain"], cwd=repo)
+        if code != 0 or out.count("worktree ") < 2:
+            continue
+        if not args.no_fetch:
+            run(["git", "fetch", "--quiet", "--prune", "origin"], cwd=repo, timeout=180)
+        code, out, err = run(["wt", "-C", str(repo), "list", "--format", "json", "--full"], timeout=180)
+        if code != 0:
+            report["repos"].append({"repo": repo.name, "path": str(repo), "error": err.strip()[-200:]})
+            continue
+        prs = prs_by_branch(repo)
+        entry = {"repo": repo.name, "path": str(repo), "worktrees": [],
+                 **({"error": "GitHub PR lookup failed"} if prs is None else {})}
+        for item in json.loads(out).get("items", []):
+            wt = item.get("worktree")
+            if not wt or wt.get("main"):
+                continue
+            action, reason = judge(repo, item, prs, cwds, args.stale_days)
+            if prs is None and action == "remove" and reason.startswith(("stale", "PR")):
+                action, reason = "keep", "GitHub unavailable"
+            mine = (prs or {}).get(item.get("branch"), [])
+            row = {"path": wt["path"], "branch": item.get("branch"), "action": action, "reason": reason,
+                   "committed_at": item.get("head", {}).get("committed_at"),
+                   "prs": [{"number": p["number"], "state": p["state"], "url": p["url"]} for p in mine]}
+            failed = None
+            if args.apply and action in ("remove", "prune"):
+                failed = remove(repo, item, "prune" if action == "prune" else reason)
+                if failed:
+                    failures += 1
+                    row["action"], row["reason"] = "keep", f"remove failed: {failed}"
+            mark = {"remove": "✗", "prune": "✗", "keep": "·"}[action]
+            done = "" if not args.apply or action == "keep" else (" (FAILED)" if failed else " (removed)")
+            print(f"{mark} {repo.name:<18} {(item.get('branch') or wt['path'])[:60]:<60} {reason}{done}")
+            if not args.apply or action == "keep" or failed:
+                entry["worktrees"].append(row)
+        report["repos"].append(entry)
+
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = STATE / "report.json.tmp"
+    tmp.write_text(json.dumps(report, indent=1))
+    tmp.replace(STATE / "report.json")
+    if failures:
+        sys.exit(f"{failures} worktree{'s' if failures > 1 else ''} not removed (see the panel)")
+
+
+if __name__ == "__main__":
+    main()

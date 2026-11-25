@@ -1,0 +1,3 @@
+# Same place Herdr's New worktree uses (settings.json worktrees.directory); wt-reap cleans up.
+worktree-path = "~/worktrees/{{ repo }}/{{ branch | sanitize }}"
+post-remove = "lockf -k /tmp/pnpm-prune.lock pnpm store prune"
