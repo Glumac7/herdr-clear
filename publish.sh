@@ -7,6 +7,17 @@ BIN="${WT_BIN:-$HOME/.local/bin}"
 MANAGED="mods layouts themes bin worktrunk launchd keys"
 cd "$REPO"
 trap 'rm -f keys/*.tmp' EXIT
+SYNCED_FILE="$HERDR/.herdr-clear-synced"
+
+git fetch -q
+synced=$(cat "$SYNCED_FILE" 2>/dev/null || git rev-parse HEAD)
+theirs=$(git log --format= --name-only "$synced..@{u}" -- $MANAGED | sort -u)
+if [ -n "$theirs" ]; then
+  echo "The repo has setup changes this Mac doesn't have; publishing now would undo them:" >&2
+  printf '  %s\n' $theirs >&2
+  echo "Save any unpublished edits, run: git pull && ./install.sh --force, redo your edits, then ./publish.sh." >&2
+  exit 1
+fi
 
 for d in mods/*/; do
   m=$(basename "$d")
@@ -40,19 +51,23 @@ if [ -n "$changes" ]; then
   git commit -q -m "${1:-chore: update setup}" -- $MANAGED
 fi
 before=$(git rev-parse HEAD)
-git pull -q --rebase --autostash || {
-  echo "Conflict with newer repo changes: resolve it, run git rebase --continue, then ./install.sh --force, then ./publish.sh again." >&2
+if ! git pull -q --rebase --autostash; then
+  if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+    echo "Conflict with repo changes made while publishing: resolve it, git rebase --continue, ./install.sh --force, then ./publish.sh." >&2
+  else
+    echo "git pull failed (see above); fix it and run ./publish.sh again." >&2
+  fi
   exit 1
-}
-pulled=$(git diff --name-only "$before" HEAD -- $MANAGED)
-if [ -n "$pulled" ]; then
-  echo "Merged newer repo changes; installing the merged setup on this Mac."
-  "$REPO/install.sh" --force
 fi
-ahead=$(git rev-list @{u}..HEAD)
-if [ -z "$ahead" ]; then
-  [ -n "$pulled" ] || echo "Nothing changed."
-  exit 0
+if ! git diff --quiet "$before" HEAD -- $MANAGED; then
+  echo "The repo changed while publishing. Run ./install.sh --force (your edits are committed), then ./publish.sh." >&2
+  exit 1
 fi
-git push -q
-echo "Published. Others run ./update.sh"
+ahead=$(git rev-list "@{u}..HEAD")
+if [ -n "$ahead" ]; then
+  git push -q
+  echo "Published. Others run ./update.sh"
+else
+  echo "Nothing changed."
+fi
+git rev-parse HEAD > "$SYNCED_FILE"

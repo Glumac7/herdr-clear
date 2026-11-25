@@ -57,6 +57,9 @@ command -v jq >/dev/null || { echo "jq is required (brew install jq)" >&2; exit 
 SKIPPED=()
 FAILED=()
 MODS=()
+SYNCED_FILE="$HERDR/.herdr-clear-synced"
+SYNCED=$(cat "$SYNCED_FILE" 2>/dev/null || true)
+HEAD_REV=$(git -C "$REPO" rev-parse -q --verify HEAD 2>/dev/null || true)
 
 place() { # src dest; returns 1 only when an existing dest is kept
   if [ -e "$2" ] && [ $FORCE = 0 ]; then SKIPPED+=("$2"); return 1; fi
@@ -68,17 +71,23 @@ mod() {
 }
 
 keys() { # fragment
-  local file="$HERDR/keys.json" merged conflicts
+  local file="$HERDR/keys.json" cur merged conflicts old='{}' rel="keys/$(basename "$1")"
   grep -q '[^[:space:]]' "$file" 2>/dev/null || echo '{}' > "$file"
-  conflicts=$(jq -r --slurpfile f "$1" '. as $k | $f[0] | to_entries[] | .key as $s | .value | to_entries[]
-    | select($k[$s][.key] != null and $k[$s][.key] != .value) | "\($s) \(.key)"' "$file")
+  # With --force, drop bindings the repo removed since the last forced install, unless the user rebound them.
+  if [ $FORCE = 1 ] && [ -n "$SYNCED" ] && git -C "$REPO" cat-file -e "$SYNCED:$rel" 2>/dev/null; then
+    old=$(git -C "$REPO" show "$SYNCED:$rel")
+  fi
+  cur=$(jq --argjson old "$old" --slurpfile f "$1" 'reduce ($old | to_entries[] | .key as $s | .value | to_entries[]
+    | {s: $s, k: .key, v: .value}) as $p (.; if $f[0][$p.s][$p.k] == null and .[$p.s][$p.k] == $p.v then del(.[$p.s][$p.k]) else . end)' "$file")
+  conflicts=$(printf '%s' "$cur" | jq -r --slurpfile f "$1" '. as $k | $f[0] | to_entries[] | .key as $s | .value | to_entries[]
+    | select($k[$s][.key] != null and $k[$s][.key] != .value) | "\($s) \(.key)"')
   if [ -n "$conflicts" ] && [ $FORCE = 0 ]; then
     while IFS= read -r c; do SKIPPED+=("key $c"); done <<< "$conflicts"
-    merged=$(jq --slurpfile f "$1" '. as $k | reduce ($f[0] | to_entries[]) as $s ($k;
-      .[$s.key] = (($s.value) + (.[$s.key] // {})))' "$file")
+    merged=$(printf '%s' "$cur" | jq --slurpfile f "$1" '. as $k | reduce ($f[0] | to_entries[]) as $s ($k;
+      .[$s.key] = (($s.value) + (.[$s.key] // {})))')
   else
-    merged=$(jq --slurpfile f "$1" '. as $k | reduce ($f[0] | to_entries[]) as $s ($k;
-      .[$s.key] = ((.[$s.key] // {}) + $s.value))' "$file")
+    merged=$(printf '%s' "$cur" | jq --slurpfile f "$1" '. as $k | reduce ($f[0] | to_entries[]) as $s ($k;
+      .[$s.key] = ((.[$s.key] // {}) + $s.value))')
   fi
   [ -f "$file.before-herdr-clear" ] || cp "$file" "$file.before-herdr-clear"
   printf '%s\n' "$merged" > "$file"
@@ -142,6 +151,7 @@ done
 
 { if [ -f "$STATE" ] && [ $UPDATE = 0 ]; then cat "$STATE"; fi; printf '%s\n' "${PARTS[@]}"; } | sort -u > "$STATE.tmp"
 mv "$STATE.tmp" "$STATE"
+if [ $FORCE = 1 ] && [ -n "$HEAD_REV" ]; then echo "$HEAD_REV" > "$SYNCED_FILE"; fi
 
 if command -v herdr-app >/dev/null; then
   for m in ${MODS[@]+"${MODS[@]}"}; do
