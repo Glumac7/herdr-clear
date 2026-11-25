@@ -25,19 +25,24 @@ fragments=$(ls keys/*.json | grep -v '^keys/keys.json$')
 for f in $fragments; do
   jq --slurpfile live "$live" '$live[0] as $l | with_entries(.key as $s
     | if $s == "global" then .value |= with_entries(select($l.global[.key] != null) | .value = $l.global[.key])
-      else .value = ($l[$s] // .value) end)' "$f" > "$f.tmp"
+      else .value = $l[$s] end) | with_entries(select(.value != null))' "$f" > "$f.tmp"
   mv "$f.tmp" "$f"
 done
 jq -n --slurpfile live "$live" '[inputs | .global // {} | keys[]] as $owned | $live[0]
   | {global: (.global | with_entries(select(.key as $k | $owned | index($k) | not))), terminal}' $fragments > keys/keys.json.tmp
 mv keys/keys.json.tmp keys/keys.json
+unowned=$(jq -rn --slurpfile live "$live" '[inputs | keys[]] as $owned | $live[0] | keys[]
+  | select(. != "global" and . != "terminal" and (. as $s | $owned | index($s) | not))' $fragments)
+[ -z "$unowned" ] || echo "Not published (no keys/<part>.json has these sections):" $unowned
 
-if [ -n "$(git status --porcelain -- $MANAGED)" ]; then
+changes=$(git status --porcelain -- $MANAGED)
+if [ -n "$changes" ]; then
   git add -A -- $MANAGED
   git status --short -- $MANAGED
-  git commit -q -m "${1:-chore: update setup}"
+  git commit -q -m "${1:-chore: update setup}" -- $MANAGED
 fi
-if [ -z "$(git rev-list @{u}..HEAD)" ]; then
+ahead=$(git rev-list @{u}..HEAD)
+if [ -z "$ahead" ]; then
   echo "Nothing changed."
   exit 0
 fi

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-HERDR="${HERDR_HOME:-$HOME/.config/herdr-app}"
+HERDR="${HERDR_HOME:-${HERDR_APP_HOME:-$HOME/.config/herdr-app}}"
+STATE="$HERDR/.herdr-clear-parts"
 BIN="${WT_BIN:-$HOME/.local/bin}"
 FONTS=/System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts
 PANEL_MODS="ticket-desk remote-checker servers skills agenttrail usage-limits"
@@ -11,6 +12,7 @@ ALL="clear worktrees keys $PANEL_MODS sentry claude-usage"
 usage() {
   cat <<EOF
 Usage: ./install.sh [--force] [part ...]
+       ./install.sh --update      reinstall (--force) the parts this Mac installed
 
 No part installs everything. Parts:
   clear        the Clear layout, theme, clear + clear-tabs mods, their keys (needs: worktrees)
@@ -25,15 +27,28 @@ EOF
 }
 
 FORCE=0
+UPDATE=0
 PARTS=()
+known() { case " $ALL " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 for a in "$@"; do
   case "$a" in
     --force) FORCE=1 ;;
+    --update) FORCE=1; UPDATE=1 ;;
     -h|--help|--list) usage; exit 0 ;;
-    *) case " $ALL " in *" $a "*) PARTS+=("$a") ;; *) echo "Unknown part: $a" >&2; usage >&2; exit 2 ;; esac ;;
+    *) known "$a" || { echo "Unknown part: $a" >&2; usage >&2; exit 2; }; PARTS+=("$a") ;;
   esac
 done
-[ ${#PARTS[@]} -gt 0 ] || PARTS=($ALL)
+if [ $UPDATE = 1 ]; then
+  [ -s "$STATE" ] || { echo "No install record at $STATE. Run ./install.sh <parts> once so update knows what you use." >&2; exit 1; }
+  PARTS=()
+  for p in $(cat "$STATE"); do
+    if known "$p"; then PARTS+=("$p"); else echo "Part $p no longer exists; dropped from your install record."; fi
+  done
+fi
+if [ ${#PARTS[@]} = 0 ]; then
+  [ $UPDATE = 0 ] || { echo "Nothing left to update."; exit 0; }
+  PARTS=($ALL)
+fi
 case " ${PARTS[*]} " in *" clear "*) case " ${PARTS[*]} " in *" worktrees "*) ;; *) PARTS+=(worktrees) ;; esac ;; esac
 
 command -v jq >/dev/null || { echo "jq is required (brew install jq)" >&2; exit 1; }
@@ -50,13 +65,11 @@ place() { # src dest; returns 1 only when an existing dest is kept
 
 mod() {
   place "$REPO/mods/$1" "$HERDR/mods/$1" && MODS+=("$1") || true
-  [ -f "$REPO/keys/$1.json" ] && keys "$REPO/keys/$1.json"
-  return 0
 }
 
 keys() { # fragment
   local file="$HERDR/keys.json" merged conflicts
-  [ -f "$file" ] || echo '{}' > "$file"
+  [ -s "$file" ] || echo '{}' > "$file"
   conflicts=$(jq -r --slurpfile f "$1" '. as $k | $f[0] | to_entries[] | .key as $s | .value | to_entries[]
     | select($k[$s][.key] != null and $k[$s][.key] != .value) | "\($s) \(.key)"' "$file")
   if [ -n "$conflicts" ] && [ $FORCE = 0 ]; then
@@ -97,12 +110,14 @@ install_worktrees() {
   done
   place "$REPO/worktrunk/config.toml" "$HOME/.config/worktrunk/config.toml" || true
   local settings="$HERDR/settings.json"
-  [ -f "$settings" ] || echo '{}' > "$settings"
+  [ -s "$settings" ] || echo '{}' > "$settings"
   local current next
   current=$(jq -r '.worktrees.directory // empty' "$settings")
   if [ -z "$current" ] || [ $FORCE = 1 ]; then
     next=$(jq '.worktrees.directory = "~/worktrees"' "$settings")
     printf '%s\n' "$next" > "$settings"
+  elif [ "$current" != "~/worktrees" ]; then
+    SKIPPED+=("$settings worktrees.directory=$current")
   fi
   local plist="$HOME/Library/LaunchAgents/at.dbdev.wt-reap.plist"
   if [ ! -e "$plist" ] || [ $FORCE = 1 ]; then
@@ -119,18 +134,18 @@ for p in "${PARTS[@]}"; do
   case "$p" in
     clear) install_clear ;;
     worktrees) install_worktrees ;;
-    keys) keys "$REPO/keys/keys.json" ;;
+    keys) ;;
     *) mod "$p" ;;
   esac
+  if [ -f "$REPO/keys/$p.json" ]; then keys "$REPO/keys/$p.json"; fi
 done
 
-STATE="$HERDR/.herdr-clear-parts"
-{ if [ -f "$STATE" ]; then cat "$STATE"; fi; printf '%s\n' "${PARTS[@]}"; } | sort -u > "$STATE.tmp"
+{ if [ -f "$STATE" ] && [ $UPDATE = 0 ]; then cat "$STATE"; fi; printf '%s\n' "${PARTS[@]}"; } | sort -u > "$STATE.tmp"
 mv "$STATE.tmp" "$STATE"
 
 if command -v herdr-app >/dev/null; then
   for m in ${MODS[@]+"${MODS[@]}"}; do
-    herdr-app check "$HERDR/mods/$m" >/dev/null || FAILED+=("$m")
+    if ! out=$(herdr-app check "$HERDR/mods/$m" 2>&1); then FAILED+=("$m"); printf '%s\n' "$out" >&2; fi
   done
 else
   echo "herdr-app not on PATH; mods were not checked."
