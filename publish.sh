@@ -10,12 +10,18 @@ trap 'rm -f keys/*.tmp' EXIT
 SYNCED_FILE="$HERDR/.herdr-clear-synced"
 
 git fetch -q
-synced=$(cat "$SYNCED_FILE" 2>/dev/null || git rev-parse HEAD)
+[ -s "$SYNCED_FILE" ] || {
+  echo "No sync record at $SYNCED_FILE, so publish can't tell whether your live setup has everything in the repo." >&2
+  echo "If it does (you published last): git rev-parse @{u} > $SYNCED_FILE. Otherwise save unpublished edits and run ./install.sh --force first." >&2
+  exit 1
+}
+synced=$(cat "$SYNCED_FILE")
+git cat-file -e "$synced^{commit}" 2>/dev/null || { echo "Sync record $synced is not in this clone; run ./install.sh --force after saving unpublished edits." >&2; exit 1; }
 theirs=$(git log --format= --name-only "$synced..@{u}" -- $MANAGED | sort -u)
 if [ -n "$theirs" ]; then
   echo "The repo has setup changes this Mac doesn't have; publishing now would undo them:" >&2
   printf '  %s\n' $theirs >&2
-  echo "Save any unpublished edits, run: git pull && ./install.sh --force, redo your edits, then ./publish.sh." >&2
+  echo "Save any unpublished edits, run: git pull --rebase && ./install.sh --force, redo your edits, then ./publish.sh." >&2
   exit 1
 fi
 

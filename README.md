@@ -19,7 +19,7 @@ Existing files and keys are kept and listed; `--force` replaces them. Your `keys
 ./update.sh
 ```
 
-Pulls and reinstalls the parts you installed, as recorded in `~/.config/herdr-app/.herdr-clear-parts` (delete a line there to stop updating that part). It overwrites your own edits to those parts and any of your keys that differ.
+Pulls and reinstalls the parts you installed, as recorded in `~/.config/herdr-app/.herdr-clear-parts` (delete a line there to stop updating that part). It overwrites your own edits to those parts and any of your keys that differ; bindings removed from the repo are removed too, unless you rebound them.
 
 ## Publish (maintainer)
 

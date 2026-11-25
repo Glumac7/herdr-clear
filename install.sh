@@ -60,6 +60,7 @@ MODS=()
 SYNCED_FILE="$HERDR/.herdr-clear-synced"
 SYNCED=$(cat "$SYNCED_FILE" 2>/dev/null || true)
 HEAD_REV=$(git -C "$REPO" rev-parse -q --verify HEAD 2>/dev/null || true)
+REPO_KEYS=$(jq -s 'reduce .[] as $x ({}; . * $x)' "$REPO"/keys/*.json)
 
 place() { # src dest; returns 1 only when an existing dest is kept
   if [ -e "$2" ] && [ $FORCE = 0 ]; then SKIPPED+=("$2"); return 1; fi
@@ -77,8 +78,8 @@ keys() { # fragment
   if [ $FORCE = 1 ] && [ -n "$SYNCED" ] && git -C "$REPO" cat-file -e "$SYNCED:$rel" 2>/dev/null; then
     old=$(git -C "$REPO" show "$SYNCED:$rel")
   fi
-  cur=$(jq --argjson old "$old" --slurpfile f "$1" 'reduce ($old | to_entries[] | .key as $s | .value | to_entries[]
-    | {s: $s, k: .key, v: .value}) as $p (.; if $f[0][$p.s][$p.k] == null and .[$p.s][$p.k] == $p.v then del(.[$p.s][$p.k]) else . end)' "$file")
+  cur=$(jq --argjson old "$old" --argjson all "$REPO_KEYS" 'reduce ($old | to_entries[] | .key as $s | .value | to_entries[]
+    | {s: $s, k: .key, v: .value}) as $p (.; if $all[$p.s][$p.k] == null and .[$p.s][$p.k] == $p.v then del(.[$p.s][$p.k]) else . end)' "$file")
   conflicts=$(printf '%s' "$cur" | jq -r --slurpfile f "$1" '. as $k | $f[0] | to_entries[] | .key as $s | .value | to_entries[]
     | select($k[$s][.key] != null and $k[$s][.key] != .value) | "\($s) \(.key)"')
   if [ -n "$conflicts" ] && [ $FORCE = 0 ]; then
@@ -151,7 +152,9 @@ done
 
 { if [ -f "$STATE" ] && [ $UPDATE = 0 ]; then cat "$STATE"; fi; printf '%s\n' "${PARTS[@]}"; } | sort -u > "$STATE.tmp"
 mv "$STATE.tmp" "$STATE"
-if [ $FORCE = 1 ] && [ -n "$HEAD_REV" ]; then echo "$HEAD_REV" > "$SYNCED_FILE"; fi
+if [ $FORCE = 1 ] || [ ${#SKIPPED[@]} = 0 ]; then
+  if [ -n "$HEAD_REV" ] && printf '%s\n' "${PARTS[@]}" | sort -u | cmp -s - "$STATE"; then echo "$HEAD_REV" > "$SYNCED_FILE"; fi
+fi
 
 if command -v herdr-app >/dev/null; then
   for m in ${MODS[@]+"${MODS[@]}"}; do
