@@ -4,10 +4,16 @@ My [Herdr](https://herdr.dev) setup: the **Clear** layout (chat view for omp ses
 
 ## Install
 
+Everything, in one line:
+
 ```sh
-git clone git@github.com:Glumac7/herdr-clear.git && cd herdr-clear
-./install.sh                    # everything
-./install.sh clear sentry       # only some parts
+git clone git@github.com:Glumac7/herdr-clear.git && cd herdr-clear && ./install.sh
+```
+
+Only some parts (from inside `herdr-clear`):
+
+```sh
+./install.sh clear sentry       # only these parts
 ./install.sh --list             # shows the parts (same as --help)
 ```
 
