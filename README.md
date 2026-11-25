@@ -23,7 +23,7 @@ Pulls and reinstalls the parts you installed, as recorded in `~/.config/herdr-ap
 
 ## Publish (maintainer)
 
-`./publish.sh ["commit message"]` copies the live setup from this Mac into the repo, commits and pushes. A new global key lands in `keys/keys.json`; if it belongs to a part, move it to `keys/<part>.json` once.
+`./publish.sh ["commit message"]` copies the live setup from this Mac into the repo, commits, merges newer repo changes (and installs the merged result here), then pushes. A new global key lands in `keys/keys.json`; if it belongs to a part, move it to `keys/<part>.json` once.
 
 ## Parts
 

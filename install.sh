@@ -146,6 +146,7 @@ mv "$STATE.tmp" "$STATE"
 if command -v herdr-app >/dev/null; then
   for m in ${MODS[@]+"${MODS[@]}"}; do
     if ! out=$(herdr-app check "$HERDR/mods/$m" 2>&1); then FAILED+=("$m"); printf '%s\n' "$out" >&2; fi
+    herdr-app types "$HERDR/mods/$m" >/dev/null 2>&1 || true
   done
 else
   echo "herdr-app not on PATH; mods were not checked."

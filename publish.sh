@@ -8,13 +8,6 @@ MANAGED="mods layouts themes bin worktrunk launchd keys"
 cd "$REPO"
 trap 'rm -f keys/*.tmp' EXIT
 
-before=$(git rev-parse HEAD)
-git pull -q --ff-only
-if ! git diff --quiet "$before" HEAD -- $MANAGED; then
-  echo "Pulled newer setup changes. Run ./update.sh first, then publish again." >&2
-  exit 1
-fi
-
 for d in mods/*/; do
   m=$(basename "$d")
   rsync -a --delete --exclude gpui-kit.d.ts --exclude .DS_Store --exclude /fonts/ --exclude /bin/spell "$HERDR/mods/$m/" "mods/$m/"
@@ -34,7 +27,7 @@ for f in $fragments; do
   mv "$f.tmp" "$f"
 done
 jq -n --slurpfile live "$live" '[inputs | .global // {} | keys[]] as $owned | $live[0]
-  | {global: (.global | with_entries(select(.key as $k | $owned | index($k) | not))), terminal} | with_entries(select(.value != null))' $fragments > keys/keys.json.tmp
+  | {global: ((.global // {}) | with_entries(select(.key as $k | $owned | index($k) | not))), terminal} | with_entries(select(.value != null))' $fragments > keys/keys.json.tmp
 mv keys/keys.json.tmp keys/keys.json
 unowned=$(jq -rn --slurpfile live "$live" '[inputs | keys[]] as $owned | $live[0] | keys[]
   | select(. != "global" and . != "terminal" and (. as $s | $owned | index($s) | not))' $fragments)
@@ -46,9 +39,19 @@ if [ -n "$changes" ]; then
   git status --short -- $MANAGED
   git commit -q -m "${1:-chore: update setup}" -- $MANAGED
 fi
+before=$(git rev-parse HEAD)
+git pull -q --rebase --autostash || {
+  echo "Conflict with newer repo changes: resolve it, run git rebase --continue, then ./install.sh --force, then ./publish.sh again." >&2
+  exit 1
+}
+pulled=$(git diff --name-only "$before" HEAD -- $MANAGED)
+if [ -n "$pulled" ]; then
+  echo "Merged newer repo changes; installing the merged setup on this Mac."
+  "$REPO/install.sh" --force
+fi
 ahead=$(git rev-list @{u}..HEAD)
 if [ -z "$ahead" ]; then
-  echo "Nothing changed."
+  [ -n "$pulled" ] || echo "Nothing changed."
   exit 0
 fi
 git push -q
